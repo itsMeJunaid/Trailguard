@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Shield body (darker) -->
+    <path
+        android:fillColor="#0F5238"
+        android:pathData="M54,18 L86,30 L86,62 C86,80 72,92 54,96 C36,92 22,80 22,62 L22,30 Z"/>
+
+    <!-- Shield inner highlight -->
+    <path
+        android:strokeColor="#95D4B3"
+        android:strokeAlpha="0.35"
+        android:strokeWidth="0.7"
+        android:fillColor="#00000000"
+        android:pathData="M54,22 L82,33 L82,61 C82,77 70,88 54,92 C38,88 26,77 26,61 L26,33 Z"/>
+
+    <!-- Circuit lines (left) -->
+    <group>
+      <path android:strokeColor="#95D4B3" android:strokeAlpha="0.55" android:strokeWidth="0.6"
+            android:pathData="M24,42 L33,42 L36,45"/>
+      <path android:strokeColor="#95D4B3" android:strokeAlpha="0.55" android:strokeWidth="0.6"
+            android:pathData="M33,42 L33,52"/>
+      <path android:fillColor="#95D4B3" android:fillAlpha="0.75"
+            android:pathData="M32,52 L34,52 L34,54 L32,54 Z"/>
+      <path android:strokeColor="#95D4B3" android:strokeAlpha="0.55" android:strokeWidth="0.6"
+            android:pathData="M22,70 L30,70 L33,73 L33,82"/>
+      <path android:fillColor="#95D4B3" android:fillAlpha="0.75"
+            android:pathData="M32,82 L34,82 L34,84 L32,84 Z"/>
+    </group>
+
+    <!-- Circuit lines (right) -->
+    <group>
+      <path android:strokeColor="#95D4B3" android:strokeAlpha="0.55" android:strokeWidth="0.6"
+            android:pathData="M86,50 L76,50 L73,53"/>
+      <path android:fillColor="#95D4B3" android:fillAlpha="0.75"
+            android:pathData="M72,53 L74,53 L74,55 L72,55 Z"/>
+      <path android:strokeColor="#95D4B3" android:strokeAlpha="0.55" android:strokeWidth="0.6"
+            android:pathData="M86,76 L78,76 L75,79 L75,86"/>
+      <path android:fillColor="#95D4B3" android:fillAlpha="0.75"
+            android:pathData="M74,86 L76,86 L76,88 L74,88 Z"/>
+    </group>
+
+    <!-- Back mountain (darkest) -->
+    <path
+        android:fillColor="#1B4332"
+        android:pathData="M26,78 L46,46 L60,64 L68,54 L82,78 Z"/>
+
+    <!-- Right peak highlight -->
+    <path
+        android:fillColor="#40916C"
+        android:pathData="M68,54 L82,78 L74,78 L68,64 Z"/>
+
+    <!-- Front peak -->
+    <path
+        android:fillColor="#2D6A4F"
+        android:pathData="M40,78 L52,52 L64,78 Z"/>
+
+    <!-- Snowcap -->
+    <path
+        android:fillColor="#E8FFF0"
+        android:pathData="M50,58 L52,52 L55,60 L52,59 Z"/>
+
+    <!-- Winding river -->
+    <path
+        android:strokeColor="#E8FFF0"
+        android:strokeWidth="3.5"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round"
+        android:pathData="M54,62 C 52,68 58,72 56,78 C 54,84 60,88 58,92"/>
+    <path
+        android:strokeColor="#B1F0CE"
+        android:strokeWidth="1.2"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round"
+        android:pathData="M54,62 C 52,68 58,72 56,78 C 54,84 60,88 58,92"/>
+</vector>

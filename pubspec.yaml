@@ -1,0 +1,73 @@
+name: trailguard_ai
+description: Offline AI survival assistant for hikers and travelers using Gemma 4.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+  flutter: '>=3.22.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  provider: ^6.1.2
+  riverpod: ^2.5.1
+  flutter_riverpod: ^2.5.1
+
+  go_router: ^13.2.0
+
+  geolocator: ^12.0.0
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+
+  camera: ^0.11.0+2
+  image: ^4.2.0
+  image_picker: ^1.1.2
+  tflite_flutter: ^0.11.0
+
+  path_provider: ^2.1.3
+  shared_preferences: ^2.3.1
+  sqflite: ^2.3.3+1
+  file_picker: ^8.1.2
+
+  permission_handler: ^11.3.1
+
+  record: ^6.0.0
+  audioplayers: ^6.1.0
+  flutter_tts: ^4.0.2
+
+  flutter_svg: ^2.0.10+1
+  lottie: ^3.1.2
+  shimmer: ^3.0.0
+  fl_chart: ^0.68.0
+  cupertino_icons: ^1.0.8
+
+  flutter_local_notifications: ^17.2.2
+
+  ffi: ^2.1.3
+
+  intl: ^0.19.0
+  uuid: ^4.4.0
+  http: ^1.2.2
+
+  google_fonts: ^6.2.1
+  url_launcher: ^6.3.0
+  speech_to_text: ^7.0.0
+  dio: ^5.5.0
+
+  flutter_downloader: ^1.11.8
+  flutter_cache_manager: ^3.4.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  build_runner: ^2.4.11
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icons/
+    - assets/sounds/
+    - assets/prompts/
