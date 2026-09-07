@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme.dart';
 import '../services/voice_service.dart';
+import 'pressable.dart';
 
 class VoiceButton extends ConsumerStatefulWidget {
   /// Fires when the user finishes speaking (final transcript).
@@ -78,26 +79,22 @@ class _VoiceButtonState extends ConsumerState<VoiceButton>
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: _toggle,
-      child: AnimatedBuilder(
-        animation: _pulse,
-        builder: (_, child) => Transform.scale(
-          scale: _listening ? _pulse.value : 1.0,
-          child: child,
-        ),
-        child: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: _listening ? AppTheme.error : AppTheme.surfaceContainerLow,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            _listening ? Icons.stop_rounded : Icons.mic_rounded,
-            color: _listening ? Colors.white : AppTheme.primary,
-            size: 22,
-          ),
+    return AnimatedBuilder(
+      animation: _pulse,
+      builder: (_, child) => Transform.scale(
+        scale: _listening ? _pulse.value : 1.0,
+        child: child,
+      ),
+      child: Pressable(
+        circle: true,
+        onPressed: _toggle,
+        background:
+            _listening ? AppTheme.error : AppTheme.surfaceContainerLow,
+        label: _listening ? 'Stop listening' : 'Speak your question',
+        child: Icon(
+          _listening ? Icons.stop_rounded : Icons.mic_rounded,
+          color: _listening ? Colors.white : AppTheme.primary,
+          size: 22,
         ),
       ),
     );

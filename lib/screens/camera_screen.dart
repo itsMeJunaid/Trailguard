@@ -1,13 +1,14 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:camera/camera.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:go_router/go_router.dart';
+import '../core/platform/local_files.dart';
 import '../core/theme.dart';
 import '../providers/ai_provider.dart';
 import '../providers/profile_provider.dart';
 import '../services/ai_service.dart';
+import '../widgets/pressable.dart';
 
 class CameraScreen extends ConsumerStatefulWidget {
   const CameraScreen({super.key});
@@ -20,7 +21,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
   CameraController? _cam;
   final _ai = AIService();
   final _picker = ImagePicker();
-  File? _image;
+  String? _imagePath;
   bool _analyzing = false;
   String? _aiResponse;
   int _tokens = 0;
@@ -48,7 +49,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
     try {
       final x = await _cam!.takePicture();
       setState(() {
-        _image = File(x.path);
+        _imagePath = x.path;
         _aiResponse = null;
         _tokens = 0;
         _elapsedMs = 0;
@@ -60,7 +61,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
     final x = await _picker.pickImage(source: ImageSource.gallery, maxWidth: 1280);
     if (x == null) return;
     setState(() {
-      _image = File(x.path);
+      _imagePath = x.path;
       _aiResponse = null;
       _tokens = 0;
       _elapsedMs = 0;
@@ -68,7 +69,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
   }
 
   Future<void> _askAI(String question) async {
-    if (_image == null) return;
+    if (_imagePath == null) return;
     final aiState = ref.read(aiProvider);
     if (!aiState.isModelLoaded) {
       setState(() {
@@ -90,7 +91,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
     try {
       await for (final token in _ai.chatStreamWithImage(
         question,
-        imagePath: _image!.path,
+        imagePath: _imagePath!,
         profile: profile,
       )) {
         buf.write(token);
@@ -110,7 +111,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
   }
 
   void _reset() => setState(() {
-        _image = null;
+        _imagePath = null;
         _aiResponse = null;
         _tokens = 0;
         _elapsedMs = 0;
@@ -124,6 +125,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
         title: Text('AI Scout', style: AppTheme.h2()),
         actions: [
           IconButton(
+            tooltip: 'Pick from gallery',
             icon: const Icon(Icons.photo_library_rounded,
                 color: AppTheme.primary),
             onPressed: _pickGallery,
@@ -138,9 +140,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: _image != null
-                    ? Image.file(_image!,
+                borderRadius: BorderRadius.circular(16),
+                child: _imagePath != null
+                    ? localImage(_imagePath!,
                         fit: BoxFit.cover, width: double.infinity)
                     : (_cam?.value.isInitialized == true
                         ? CameraPreview(_cam!)
@@ -169,7 +171,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
             top: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-              child: _image == null
+              child: _imagePath == null
                   ? _CaptureButton(onTap: _capture)
                   : _ImageActions(
                       analyzing: _analyzing,
@@ -230,7 +232,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
                   color: AppTheme.primaryFixed,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.auto_awesome_rounded,
                     color: AppTheme.primary, size: 18),
@@ -264,7 +266,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
               size: 48, color: AppTheme.primary.withOpacity(0.3)),
           const SizedBox(height: 12),
           Text(
-            _image == null
+            _imagePath == null
                 ? 'Capture or pick an image.\nGemma will analyze it directly.'
                 : 'Image ready. Tap "Ask AI" to analyze.',
             style: AppTheme.body(),
@@ -306,25 +308,31 @@ class _CaptureButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 76,
-          height: 76,
-          decoration: BoxDecoration(
-            color: AppTheme.primary,
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 5),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.primary.withOpacity(0.3),
-                blurRadius: 18,
-                spreadRadius: 2,
-              )
-            ],
+      // Ring and glow live on the outer box so the ripple stays visible on
+      // the Material underneath rather than being painted over by it.
+      child: Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 5),
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.primary.withValues(alpha: 0.3),
+              blurRadius: 18,
+              spreadRadius: 2,
+            )
+          ],
+        ),
+        child: Pressable(
+          circle: true,
+          onPressed: onTap,
+          background: AppTheme.primary,
+          label: 'Capture photo',
+          tooltip: 'Capture',
+          child: const SizedBox(
+            width: 66,
+            height: 66,
+            child: Icon(Icons.camera_rounded, color: Colors.white, size: 30),
           ),
-          child:
-              const Icon(Icons.camera_rounded, color: Colors.white, size: 30),
         ),
       ),
     );
@@ -363,7 +371,7 @@ class _ImageActions extends StatelessWidget {
                     child: CircularProgressIndicator(
                         strokeWidth: 2, color: Colors.white))
                 : const Icon(Icons.auto_awesome_rounded, size: 20),
-            label: Text(analyzing ? 'ANALYZING…' : 'ASK AI'),
+            label: Text(analyzing ? 'Analyzing…' : 'Ask AI'),
           ),
         ),
         const SizedBox(width: 16),
@@ -482,7 +490,7 @@ class _QuestionSheetState extends State<_QuestionSheet> {
                       ? 'What is this?'
                       : _ctrl.text.trim()),
               icon: const Icon(Icons.send_rounded, size: 18),
-              label: const Text('SEND TO GEMMA'),
+              label: const Text('Send to Gemma'),
             ),
           ),
         ],

@@ -48,6 +48,31 @@ class AppTheme {
   static const Color inverseOnSurface = Color(0xFFCFFBE2);
   static const Color inversePrimary = Color(0xFF95D4B3);
 
+  // ── Interaction state tokens ──────────────────────────────────────
+  // Named here so no widget invents its own state values.
+
+  /// Pointer overlays for InkWell. Hover is half of pressed, so the two read
+  /// as two steps on one scale rather than two unrelated effects.
+  static Color get hoverOverlay => primary.withValues(alpha: 0.04);
+  static Color get pressedOverlay => primary.withValues(alpha: 0.10);
+
+  /// Keyboard focus tint. Visible on the light surfaces this app uses.
+  static Color get focusOverlay => primary.withValues(alpha: 0.16);
+
+  /// Material 3 disabled opacity.
+  static const double disabledOpacity = 0.38;
+
+  /// Radius scale, from DESIGN.md. The pill is the signature interactive
+  /// shape; cards sit at 16 and form fields at 8, so the three tiers read as
+  /// a hierarchy rather than one uniform rounding.
+  static const double radiusField = 8;
+  static const double radiusCard = 16;
+  static const double radiusPill = 999;
+
+  /// Minimum interactive size — 48, not the 44 iOS floor. This app gets used
+  /// one-handed, outdoors, sometimes with gloves on.
+  static const double minTapTarget = 48;
+
   static TextStyle _headline(double size, FontWeight w, Color c,
           {double letterSpacing = -0.2}) =>
       GoogleFonts.plusJakartaSans(
@@ -135,7 +160,7 @@ class AppTheme {
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(radiusCard),
         ),
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
@@ -160,13 +185,12 @@ class AppTheme {
           backgroundColor: primary,
           foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(radiusPill),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           textStyle: GoogleFonts.plusJakartaSans(
-            fontSize: 14,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.2,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
           ),
           elevation: 0,
         ),
@@ -174,15 +198,14 @@ class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: primary,
-          side: BorderSide(color: primary.withOpacity(0.3)),
+          side: BorderSide(color: primary.withValues(alpha: 0.3)),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(radiusPill),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           textStyle: GoogleFonts.plusJakartaSans(
-            fontSize: 14,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.2,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ),
@@ -190,15 +213,15 @@ class AppTheme {
         filled: true,
         fillColor: surfaceContainerLowest,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(radiusField),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(24),
-          borderSide: BorderSide(color: outlineVariant.withOpacity(0.3)),
+          borderRadius: BorderRadius.circular(radiusField),
+          borderSide: BorderSide(color: outlineVariant.withValues(alpha: 0.3)),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(radiusField),
           borderSide: const BorderSide(color: primary, width: 1.5),
         ),
         hintStyle: _body(14, FontWeight.w500, onSurfaceVariant.withOpacity(0.5)),

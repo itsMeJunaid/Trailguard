@@ -1,8 +1,8 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
+import '../core/platform/local_files.dart';
 import '../core/theme.dart';
 import '../models/chat_message.dart';
 import '../models/chat_session.dart';
@@ -11,7 +11,9 @@ import '../providers/profile_provider.dart';
 import '../services/ai_service.dart';
 import '../services/camera_service.dart';
 import '../services/storage_service.dart';
+import '../services/survival_kb.dart';
 import '../widgets/chat_bubble.dart';
+import '../widgets/pressable.dart';
 import '../widgets/voice_button.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -134,6 +136,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   // ── Send ────────────────────────────────────────────────────────────
+
+  /// Cancels an in-flight response. The stream's own completion path clears
+  /// _isThinking, but we clear it here too so the button flips back instantly.
+  Future<void> _stopGenerating() async {
+    await _ai.cancel();
+    if (mounted) setState(() => _isThinking = false);
+  }
 
   Future<void> _send(String text, {bool isVoice = false}) async {
     final pendingImg = _pendingImagePath;
@@ -269,6 +278,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     await voice?.speak(buffer.toString());
   }
 
+  Future<void> _speakMessage(String text) async {
+    final voice = ref.read(aiProvider.notifier).voiceService;
+    await voice?.speak(text);
+  }
+
   // ── Attach image (no auto-send) ───────────────────────────────────
 
   Future<void> _attachImage() async {
@@ -396,13 +410,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               itemCount:
                   _messages.length + (_isThinking ? 1 : 0) + (_classifying ? 1 : 0),
               itemBuilder: (ctx, i) {
-                if (i < _messages.length) return ChatBubble(message: _messages[i]);
+                if (i < _messages.length) {
+                  final m = _messages[i];
+                  return ChatBubble(
+                    message: m,
+                    onSpeak: m.role == MessageRole.assistant && !_isThinking
+                        ? () => _speakMessage(m.content)
+                        : null,
+                  );
+                }
                 final rel = i - _messages.length;
                 if (_classifying && rel == 0) return const _ClassifyingBubble();
                 return const _ThinkingBubble();
               },
             ),
           ),
+
+          // Nothing asked yet — offer the questions worth asking first,
+          // rather than a blank box and a blinking cursor.
+          if (_messages.length <= 1 && !_isThinking)
+            _Starters(onPick: (q) => _send(q)),
 
           // Input bar with optional image preview
           SafeArea(
@@ -423,7 +450,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   Container(
                     decoration: BoxDecoration(
                       color: AppTheme.surfaceContainerLowest,
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
                           color: AppTheme.onPrimaryFixed.withOpacity(0.05),
@@ -471,18 +498,44 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             onSubmitted: _send,
                           ),
                         ),
-                        GestureDetector(
-                          onTap: () => _send(_controller.text),
-                          child: Container(
-                            width: 44,
-                            height: 44,
-                            decoration: const BoxDecoration(
-                              color: AppTheme.primary,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.send_rounded,
-                                color: Colors.white, size: 20),
-                          ),
+                        // Three states: stop while streaming, disabled when
+                        // there is nothing to send, ready otherwise. Rebuilt
+                        // from the controller so it tracks typing directly.
+                        ValueListenableBuilder<TextEditingValue>(
+                          valueListenable: _controller,
+                          builder: (context, value, _) {
+                            final streaming = _isThinking;
+                            final hasContent =
+                                value.text.trim().isNotEmpty ||
+                                    _pendingImagePath != null;
+                            return Pressable(
+                              circle: true,
+                              minSize: AppTheme.minTapTarget,
+                              background: streaming
+                                  ? AppTheme.error
+                                  : AppTheme.primary,
+                              label: streaming
+                                  ? 'Stop generating'
+                                  : 'Send message',
+                              tooltip: streaming
+                                  ? 'Stop generating'
+                                  : (hasContent
+                                      ? 'Send message'
+                                      : 'Type a message or attach a photo'),
+                              onPressed: streaming
+                                  ? _stopGenerating
+                                  : (hasContent
+                                      ? () => _send(_controller.text)
+                                      : null),
+                              child: Icon(
+                                streaming
+                                    ? Icons.stop_rounded
+                                    : Icons.send_rounded,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                            );
+                          },
                         ),
                       ],
                     ),
@@ -524,18 +577,18 @@ class _ImagePreview extends StatelessWidget {
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: AppTheme.primaryFixed,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: Image.file(
-              File(path),
+            child: localImage(
+              path,
               width: 56,
               height: 56,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
+              errorWidget: Container(
                 width: 56,
                 height: 56,
                 color: AppTheme.surfaceContainerHigh,
@@ -558,6 +611,7 @@ class _ImagePreview extends StatelessWidget {
             ),
           ),
           IconButton(
+            tooltip: 'Remove image',
             icon: const Icon(Icons.close_rounded, size: 20),
             color: AppTheme.primary,
             visualDensity: VisualDensity.compact,
@@ -610,10 +664,10 @@ class _SourceTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: AppTheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
@@ -792,7 +846,7 @@ class _HistoryDrawer extends StatelessWidget {
                     height: 36,
                     decoration: BoxDecoration(
                         color: AppTheme.primaryFixed,
-                        borderRadius: BorderRadius.circular(10)),
+                        borderRadius: BorderRadius.circular(12)),
                     child: const Icon(Icons.history_rounded,
                         color: AppTheme.primary, size: 20),
                   ),
@@ -808,7 +862,7 @@ class _HistoryDrawer extends StatelessWidget {
                 child: ElevatedButton.icon(
                   onPressed: onNewChat,
                   icon: const Icon(Icons.add_rounded, size: 18),
-                  label: const Text('NEW CHAT'),
+                  label: const Text('New chat'),
                 ),
               ),
             ),
@@ -905,6 +959,7 @@ class _SessionTile extends StatelessWidget {
                   ),
                 ),
                 IconButton(
+                  tooltip: 'Delete chat',
                   icon:
                       const Icon(Icons.delete_outline_rounded, size: 18),
                   color: AppTheme.error.withOpacity(0.7),
@@ -915,6 +970,53 @@ class _SessionTile extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+
+// ─── Starter questions ──────────────────────────────────────────────────────
+
+class _Starters extends StatelessWidget {
+  final ValueChanged<String> onPick;
+  const _Starters({required this.onPick});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('TRY ASKING', style: AppTheme.label()),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final s in SurvivalKnowledgeBase.starters)
+                Pressable(
+                  onPressed: () => onPick(s.question),
+                  minSize: 0,
+                  label: s.question,
+                  tooltip: s.question,
+                  background: AppTheme.surfaceContainerLowest,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 9),
+                    child: Text(
+                      s.label,
+                      style: AppTheme.bodyBold(color: AppTheme.primary)
+                          .copyWith(fontSize: 12.5),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }

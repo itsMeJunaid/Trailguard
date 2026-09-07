@@ -40,10 +40,12 @@ When you're deep in the backcountry, signal disappears — but emergencies don't
 | Feature | Description |
 |---|---|
 | 🤖 **Offline AI Chat** | Gemma 4 runs entirely on-device — no API keys, no data plan needed |
+| 📖 **Built-in Survival Guide** | 22 first-aid and fieldcraft topics answer instantly with no model loaded — so the app is useful the second it opens, and in the browser build |
 | 📸 **Image Analysis** | Photograph plants, insects, injuries, or terrain for AI identification |
 | 🆘 **SOS Emergency Mode** | Structured first-aid trees for snake bites, bleeding, fractures, burns, and allergic reactions |
-| 🗺️ **GPS Trail Tracking** | Log your route, distance, elevation, and checkpoints in real time |
-| 🗾 **Offline Maps** | Cached OpenStreetMap tiles so you can navigate without signal |
+| 🗺️ **GPS Trail Tracking** | Log your route, distance, elevation, and checkpoints in real time — your track draws as a dotted line |
+| 🧭 **Offline Navigation** | Bearing-based turn guidance — "Turn left · 340 m" back to your start or to any pin. No routing server, works with zero signal |
+| 🗾 **Offline Maps** | Pick Topographic / Standard / Satellite, then **Save this area** to download its tiles for use with no signal (Android) |
 | 🎙️ **Voice In / Out** | Speech-to-text input + text-to-speech responses, fully hands-free |
 | 👤 **User Profile** | Store blood type, allergies, medications, and emergency contact for context-aware AI responses |
 | 💬 **Chat History** | Multiple saved sessions stored locally in SQLite — review past guidance anytime |
@@ -178,6 +180,52 @@ Once the model loads, you're ready. The bottom navigation has five sections:
 
 ---
 
+## 🧭 Maps & Navigation
+
+### Choosing a basemap
+
+Tap the **layers** button on the Map tab. Three sources, none of which need an
+account or API key — the app asks for location permission and nothing else:
+
+| Style | Source | Best for |
+|---|---|---|
+| **Topographic** (default) | OpenTopoMap | Hiking — contours, paths, peaks. Published to zoom 17. |
+| **Standard** | OpenStreetMap | Familiar street map, lightest to load. |
+| **Satellite** | Esri World Imagery | Spotting water, tree cover and clearings. |
+
+Attribution for the active source is shown on the map, as each of these
+licences requires. Your choice is remembered.
+
+### Saving an area for offline use
+
+1. Pan and zoom to the area you care about **while you still have signal**
+2. Tap **layers → Save this area**
+3. Confirm the tile count and approximate size
+4. The tiles download for the current zoom plus three levels deeper
+
+> **Android only.** In the browser, `flutter_cache_manager` is backed by an
+> in-memory filesystem — the tile cache is RAM and is wiped on every page
+> reload — so the web build says so instead of downloading tiles that cannot
+> persist. The Map tab still works online in a browser.
+
+### Turn-by-turn guidance
+
+Tap the **direction** button while tracking to be guided back to your start, or
+tap any pin to be guided to it. TrailGuard shows the turn, the distance and the
+compass bearing — *"Turn left · 340 m · Start of trail · NW"* — and the arrow
+rotates as you move.
+
+Heading comes from the last leg of your own GPS track, so it needs you to be
+walking; standing still falls back to a compass bearing (*"Head NE"*) rather
+than inventing a turn.
+
+> **This is direct-line guidance, not road routing.** It points at the target
+> as the crow flies — which is what you want for returning to a known point
+> with no signal, and is why it needs no network and no map data. It does not
+> follow trails around obstacles.
+
+---
+
 ## 🆘 How to Use SOS Emergency Mode
 
 1. **Long-press** the red SOS button on the Home screen
@@ -288,6 +336,71 @@ flutter run
 
 ---
 
+### Run in the Browser (no emulator, no device)
+
+TrailGuard also builds for Flutter web, which is the fastest way to iterate on
+the UI — hot reload in Chrome, no emulator, no APK install.
+
+```bash
+flutter pub get
+
+# Dev loop — opens Chrome and attaches hot reload
+flutter run -d chrome
+
+# Or serve without launching a browser yourself
+flutter run -d web-server --web-port 5005
+# then open http://localhost:5005
+
+# Production bundle → build/web/
+flutter build web --release
+```
+
+To host the built bundle locally:
+
+```bash
+python3 -m http.server 8000 --directory build/web
+# open http://localhost:8000
+```
+
+#### What works in the browser
+
+| Feature | Browser | Notes |
+|---|---|---|
+| 🗺️ **Map + trail tracking** | ✅ | Browser Geolocation API; needs `localhost` or HTTPS |
+| 📸 **Camera + gallery** | ✅ | `getUserMedia`; images arrive as `blob:` URLs |
+| 🎙️ **Voice in / out** | ✅ | Web Speech API — Chrome and Edge only |
+| 💬 **Chat, sessions, profile** | ✅ | Persisted to `localStorage` instead of app storage |
+| 🆘 **SOS rescue dispatch** | ✅ | Runs on the built-in first-aid response trees |
+| 🤖 **Gemma 4 on-device AI** | ❌ | Needs LiteRT-LM, a native Kotlin engine — Android only |
+| 📥 **Model download / storage scan** | ❌ | Hidden in the web build; a 1.5 GB model has nowhere to live |
+| 🧠 **MobileNet image classifier** | ❌ | `tflite_flutter` is FFI-only and cannot compile to JS |
+
+Where the native AI engine is missing, TrailGuard falls back to its built-in
+offline survival knowledge base, so every screen stays usable for demos and UI
+work. The Settings screen states this explicitly rather than offering a
+download that cannot complete.
+
+> On a desktop-width window the web build pins the app to a centred
+> phone-width frame, since the layout is designed for portrait phones. Flip
+> `_frameWideWeb` in `lib/app.dart` to `false` to let it fill the window.
+
+#### How the port is structured
+
+Platform-locked code sits behind conditional imports, so the Android build is
+untouched:
+
+```
+lib/core/platform/local_files.dart          → _io.dart | _web.dart
+lib/core/platform/downloader_boot.dart      → _io.dart | _web.dart
+lib/services/camera_service.dart            → _io.dart | _web.dart
+lib/services/model_download_service.dart    → _io.dart | _web.dart
+```
+
+Each hub picks the `_web` implementation when `dart.library.js_interop` is
+available and the `_io` one everywhere else. No screen imports `dart:io`.
+
+---
+
 ## 🧰 Tech Stack
 
 | Layer | Technology |
@@ -303,6 +416,7 @@ flutter run
 | **Camera** | camera 0.11 + image_picker |
 | **HTTP / Downloads** | dio + flutter_downloader |
 | **Native Bridge** | Kotlin MethodChannel + EventChannel |
+| **Web** | Flutter web (dart2js / CanvasKit) with conditional-import platform shims |
 
 ---
 

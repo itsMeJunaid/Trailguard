@@ -24,10 +24,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   List<String> _foundModels = [];
   bool _scanning = false;
 
+  /// False in the browser: no LiteRT-LM bridge, no model files, no GPU backend.
+  bool get _nativeEngine => AIService().isEngineAvailable;
+
   @override
   void initState() {
     super.initState();
-    _scanModels();
+    if (_nativeEngine) _scanModels();
   }
 
   Future<void> _scanModels() async {
@@ -94,6 +97,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         leading: IconButton(
+          tooltip: 'Back',
           icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.primary),
           onPressed: () => Navigator.maybePop(context),
         ),
@@ -117,65 +121,76 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 22),
 
           _SectionHeader('AI MODEL'),
-          _ModelStatusCard(
-              isLoaded: aiState.isModelLoaded, variant: aiState.loadedVariant),
-          const SizedBox(height: 12),
+          if (_nativeEngine) ...[
+            _ModelStatusCard(
+                isLoaded: aiState.isModelLoaded,
+                variant: aiState.loadedVariant),
+            const SizedBox(height: 12),
+          ] else ...[
+            const _WebEngineNotice(),
+            const SizedBox(height: 12),
+          ],
           _TokenUsageCard(ai: ref.read(aiProvider.notifier).aiService),
-          const SizedBox(height: 12),
-          _BackendToggle(
-            useGpu: aiState.useGpu,
-            loading: aiState.isLoading,
-            onChanged: (v) => ref.read(aiProvider.notifier).setUseGpu(v),
-          ),
-          const SizedBox(height: 22),
 
-          _SectionHeader('DOWNLOAD GEMMA 4 LITERT-LM'),
-          _DownloadCard(
-            state: download,
-            onStart: _startDownload,
-            onCancel: () => ref.read(downloadProvider.notifier).cancel(),
-            onOpenBrowser: _openInBrowser,
-          ),
-          const SizedBox(height: 18),
-
-          _SectionHeader('INSTALLED MODELS'),
-          _ModelCard(
-            variant: GemmaVariant.e2b,
-            filename: AppConstants.modelE2B,
-            foundModels: _foundModels,
-            onLoad: _loadModel,
-          ),
-          const SizedBox(height: 10),
-          _ModelCard(
-            variant: GemmaVariant.e4b,
-            filename: AppConstants.modelE4B,
-            foundModels: _foundModels,
-            onLoad: _loadModel,
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _scanning ? null : _scanModels,
-              icon: _scanning
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AppTheme.primary),
-                    )
-                  : const Icon(Icons.search_rounded),
-              label: Text(_scanning ? 'SCANNING...' : 'SCAN STORAGE'),
+          // Model download, storage scanning and the GPU backend all need the
+          // native LiteRT-LM bridge, which the browser build does not have.
+          if (_nativeEngine) ...[
+            const SizedBox(height: 12),
+            _BackendToggle(
+              useGpu: aiState.useGpu,
+              loading: aiState.isLoading,
+              onChanged: (v) => ref.read(aiProvider.notifier).setUseGpu(v),
             ),
-          ),
+            const SizedBox(height: 22),
+
+            _SectionHeader('DOWNLOAD GEMMA 4 LITERT-LM'),
+            _DownloadCard(
+              state: download,
+              onStart: _startDownload,
+              onCancel: () => ref.read(downloadProvider.notifier).cancel(),
+              onOpenBrowser: _openInBrowser,
+            ),
+            const SizedBox(height: 18),
+
+            _SectionHeader('INSTALLED MODELS'),
+            _ModelCard(
+              variant: GemmaVariant.e2b,
+              filename: AppConstants.modelE2B,
+              foundModels: _foundModels,
+              onLoad: _loadModel,
+            ),
+            const SizedBox(height: 10),
+            _ModelCard(
+              variant: GemmaVariant.e4b,
+              filename: AppConstants.modelE4B,
+              foundModels: _foundModels,
+              onLoad: _loadModel,
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _scanning ? null : _scanModels,
+                icon: _scanning
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: AppTheme.primary),
+                      )
+                    : const Icon(Icons.search_rounded),
+                label: Text(_scanning ? 'Scanning…' : 'Scan storage'),
+              ),
+            ),
+          ],
 
           const SizedBox(height: 24),
           _SectionHeader('ABOUT'),
           Material(
             color: AppTheme.surfaceContainerLowest,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
             child: InkWell(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(16),
               onTap: () => context.go('/about'),
               child: Padding(
                 padding: const EdgeInsets.all(18),
@@ -226,7 +241,7 @@ class _TokenUsageCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppTheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: [
@@ -275,7 +290,7 @@ class _BackendToggle extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppTheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: [
@@ -329,6 +344,55 @@ class _BackendToggle extends StatelessWidget {
   }
 }
 
+/// Explains, in the browser build, why there is no model to download.
+class _WebEngineNotice extends StatelessWidget {
+  const _WebEngineNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.tertiaryFixed,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.public_rounded,
+                    color: AppTheme.onTertiaryFixedVariant, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text('Web preview', style: AppTheme.h3()),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Gemma 4 runs through LiteRT-LM, a native engine that only exists '
+            'in the Android build. In the browser TrailGuard answers from its '
+            'built-in survival guide instead — every other feature (trail '
+            'tracking, maps, camera, voice, SOS dispatch) works normally.',
+            style: AppTheme.body(color: AppTheme.onSurface).copyWith(height: 1.5),
+          ),
+          const SizedBox(height: 12),
+          Text('Install the Android APK for full on-device AI.',
+              style: AppTheme.bodyBold(color: AppTheme.primary)),
+        ],
+      ),
+    );
+  }
+}
+
 class _SectionHeader extends StatelessWidget {
   final String text;
   const _SectionHeader(this.text);
@@ -352,9 +416,9 @@ class _ProfileCard extends StatelessWidget {
     final hasProfile = profile != null && !profile.isEmpty;
     return Material(
       color: AppTheme.surfaceContainerLowest,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         onTap: onEdit,
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -421,7 +485,7 @@ class _ModelStatusCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: AppTheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: [
@@ -487,7 +551,7 @@ class _DownloadCard extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [AppTheme.primary, AppTheme.primaryContainer],
         ),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -521,7 +585,7 @@ class _DownloadCard extends StatelessWidget {
                   child: OutlinedButton.icon(
                     onPressed: onCancel,
                     icon: const Icon(Icons.stop_circle_outlined, size: 18),
-                    label: const Text('CANCEL'),
+                    label: const Text('Cancel'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.white,
                       side: BorderSide(color: Colors.white.withOpacity(0.5)),
@@ -557,7 +621,7 @@ class _DownloadCard extends StatelessWidget {
                   child: ElevatedButton.icon(
                     onPressed: onStart,
                     icon: const Icon(Icons.download_rounded, size: 18),
-                    label: const Text('DOWNLOAD'),
+                    label: const Text('Download'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
                       foregroundColor: AppTheme.primary,
@@ -568,7 +632,7 @@ class _DownloadCard extends StatelessWidget {
                 OutlinedButton.icon(
                   onPressed: onOpenBrowser,
                   icon: const Icon(Icons.open_in_new_rounded, size: 16),
-                  label: const Text('BROWSER'),
+                  label: const Text('Browser'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.white,
                     side: BorderSide(color: Colors.white.withOpacity(0.4)),
@@ -669,7 +733,7 @@ class _ModelCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: AppTheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         border: found
             ? Border.all(color: AppTheme.primary.withOpacity(0.35), width: 1.5)
             : null,
@@ -720,7 +784,7 @@ class _ModelCard extends StatelessWidget {
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: () => onLoad(matchingPath, variant),
-                child: const Text('LOAD MODEL'),
+                child: const Text('Load model'),
               ),
             )
           else
@@ -728,7 +792,7 @@ class _ModelCard extends StatelessWidget {
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: AppTheme.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [

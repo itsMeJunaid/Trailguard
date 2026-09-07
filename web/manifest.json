@@ -1,0 +1,35 @@
+{
+    "name": "TrailGuard AI",
+    "short_name": "TrailGuard",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#E8FFF0",
+    "theme_color": "#0F5238",
+    "description": "Offline-first hiking and survival companion: AI guidance, GPS trail tracking, image scouting and SOS dispatch.",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}

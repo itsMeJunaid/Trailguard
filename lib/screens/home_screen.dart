@@ -1,8 +1,9 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../core/platform/local_files.dart';
 import '../core/theme.dart';
+import '../widgets/pressable.dart';
 import '../providers/ai_provider.dart';
 import '../providers/profile_provider.dart';
 import '../providers/trail_provider.dart';
@@ -165,21 +166,24 @@ class _AvatarCircle extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(profileProvider);
     final picPath = profile?.profilePicPath;
-    final hasPic = picPath != null && File(picPath).existsSync();
+    final hasPic = picPath != null && localFileExists(picPath);
 
-    return GestureDetector(
-      onTap: () => context.go('/profile'),
+    return Pressable(
+      circle: true,
+      onPressed: () => context.go('/profile'),
+      background: AppTheme.surfaceContainerHighest,
+      label: 'Your profile',
       child: Container(
-        width: 42,
-        height: 42,
+        width: 44,
+        height: 44,
         decoration: BoxDecoration(
-          color: AppTheme.surfaceContainerHighest,
           shape: BoxShape.circle,
-          border: Border.all(color: AppTheme.primary.withOpacity(0.25), width: 2),
+          border: Border.all(
+              color: AppTheme.primary.withValues(alpha: 0.25), width: 2),
         ),
         clipBehavior: Clip.antiAlias,
         child: hasPic
-            ? Image.file(File(picPath), fit: BoxFit.cover)
+            ? localImage(picPath, fit: BoxFit.cover)
             : const Icon(Icons.person_rounded,
                 color: AppTheme.primary, size: 22),
       ),
@@ -212,7 +216,7 @@ class _TrailStatusCard extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: AppTheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
             color: AppTheme.onPrimaryFixed.withOpacity(0.04),
@@ -282,7 +286,7 @@ class _TrailStatusCard extends StatelessWidget {
                 isTracking ? Icons.stop_circle_outlined : Icons.play_circle_outline_rounded,
                 size: 22,
               ),
-              label: Text(isTracking ? 'STOP TRACKING' : 'START TRACKING'),
+              label: Text(isTracking ? 'Stop tracking' : 'Start tracking'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: isTracking ? AppTheme.error : AppTheme.primary,
               ),
@@ -306,14 +310,23 @@ class _TrailStat extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppTheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label.toUpperCase(), style: AppTheme.label()),
+          Text(label.toUpperCase(),
+              style: AppTheme.label(), maxLines: 1, overflow: TextOverflow.ellipsis),
           const SizedBox(height: 4),
-          Text(value, style: AppTheme.h2()),
+          // Three Expanded boxes leave ~85px here, and "0.00 km" at 20px sits
+          // right on that boundary — it wrapped and made this box taller than
+          // its siblings. Scale down instead of wrapping; this also survives
+          // a large system text scale.
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(value, style: AppTheme.h2(), maxLines: 1),
+          ),
         ],
       ),
     );
@@ -343,12 +356,12 @@ class _QuickActionCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: AppTheme.surfaceContainerLowest,
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -384,7 +397,7 @@ class _UpcomingCard extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: AppTheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -436,7 +449,7 @@ class _UpcomingRow extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: AppTheme.surfaceContainerLowest,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           children: [
@@ -445,7 +458,7 @@ class _UpcomingRow extends StatelessWidget {
               height: 40,
               decoration: BoxDecoration(
                 color: AppTheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: AppTheme.primary, size: 20),
             ),
@@ -483,7 +496,7 @@ class _TipBanner extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: AppTheme.primaryFixed,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

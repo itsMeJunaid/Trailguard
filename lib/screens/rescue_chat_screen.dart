@@ -8,6 +8,7 @@ import '../providers/ai_provider.dart';
 import '../providers/profile_provider.dart';
 import '../services/ai_service.dart';
 import '../services/storage_service.dart';
+import '../widgets/pressable.dart';
 import '../widgets/voice_button.dart';
 
 class RescueChatScreen extends ConsumerStatefulWidget {
@@ -65,6 +66,11 @@ class _RescueChatScreenState extends ConsumerState<RescueChatScreen> {
         timestamp: DateTime.now(),
       ));
     });
+  }
+
+  Future<void> _stopGenerating() async {
+    await _ai.cancel();
+    if (mounted) setState(() => _isThinking = false);
   }
 
   Future<void> _send(String text, {bool isVoice = false}) async {
@@ -157,7 +163,7 @@ class _RescueChatScreenState extends ConsumerState<RescueChatScreen> {
               ),
             ),
             const SizedBox(width: 8),
-            Text('RESCUE DISPATCH',
+            Text('Rescue Dispatch',
                 style:
                     AppTheme.h3(color: Colors.white).copyWith(letterSpacing: 1.5)),
           ],
@@ -201,7 +207,7 @@ class _RescueChatScreenState extends ConsumerState<RescueChatScreen> {
               child: Container(
                 decoration: BoxDecoration(
                   color: AppTheme.surfaceContainerLowest,
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(16),
                 ),
                 padding: const EdgeInsets.all(6),
                 child: Row(
@@ -234,18 +240,38 @@ class _RescueChatScreenState extends ConsumerState<RescueChatScreen> {
                         onSubmitted: _send,
                       ),
                     ),
-                    GestureDetector(
-                      onTap: () => _send(_controller.text),
-                      child: Container(
-                        width: 44,
-                        height: 44,
-                        decoration: const BoxDecoration(
-                          color: AppTheme.error,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.send_rounded,
-                            color: Colors.white, size: 20),
-                      ),
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _controller,
+                      builder: (context, value, _) {
+                        final streaming = _isThinking;
+                        return Pressable(
+                          circle: true,
+                          minSize: AppTheme.minTapTarget,
+                          background: streaming
+                              ? AppTheme.onErrorContainer
+                              : AppTheme.error,
+                          label: streaming
+                              ? 'Stop dispatch reply'
+                              : 'Send to dispatch',
+                          tooltip: streaming
+                              ? 'Stop dispatch reply'
+                              : (value.text.trim().isEmpty
+                                  ? 'Describe your situation first'
+                                  : 'Send to dispatch'),
+                          onPressed: streaming
+                              ? _stopGenerating
+                              : (value.text.trim().isEmpty
+                                  ? null
+                                  : () => _send(_controller.text)),
+                          child: Icon(
+                            streaming
+                                ? Icons.stop_rounded
+                                : Icons.send_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),

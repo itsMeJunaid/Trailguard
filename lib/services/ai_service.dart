@@ -1,7 +1,9 @@
 import 'dart:async';
-import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../core/constants.dart';
+import '../core/platform/local_files.dart';
+import 'survival_kb.dart';
 import '../models/model_config.dart';
 import '../models/user_profile.dart';
 
@@ -69,10 +71,16 @@ class AIService {
     }
   }
 
+  /// The LiteRT-LM engine is a native Kotlin/Swift bridge. In the browser
+  /// there is nothing on the other end of the MethodChannel, so the app runs
+  /// on [_stubResponse] — its built-in offline survival knowledge base.
+  bool get isEngineAvailable => !kIsWeb;
+
   Future<bool> loadModel(String modelPath, GemmaVariant variant) async {
+    if (!isEngineAvailable) return false;
     try {
-      final f = File(modelPath);
-      if (!await f.exists() || await f.length() < 50 * 1024 * 1024) {
+      if (!localFileExists(modelPath) ||
+          await localFileSize(modelPath) < 50 * 1024 * 1024) {
         return false;
       }
     } catch (_) {
@@ -282,11 +290,11 @@ class AIService {
       ];
       return '${yc.isEmpty ? "" : "$you, "}${t[DateTime.now().minute % t.length]}';
     }
-    if (profile != null && !profile.isEmpty) {
-      return '⚠️ No AI model loaded, ${you.isEmpty ? "friend" : you}. '
-          'Profile → Model Setup → download & load a Gemma .litertlm model.';
-    }
-    return '⚠️ No AI model loaded. Profile → Model Setup → download & load.';
+    // No model loaded — the whole web build, and on-device before the
+    // download finishes. Answer from the built-in guide rather than handing
+    // back an error: someone asking how to purify water needs the answer.
+    return SurvivalKnowledgeBase.answer(msg, profile: profile) ??
+        SurvivalKnowledgeBase.notFound(profile: profile);
   }
 
   String _rescueStub(String m, String yc, UserProfile? p) {

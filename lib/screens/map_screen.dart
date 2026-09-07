@@ -4,10 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../core/theme.dart';
 import '../providers/trail_provider.dart';
 import '../services/ai_service.dart';
+import '../services/map_layers.dart';
 import '../services/map_tile_cache.dart';
+import '../services/navigation_service.dart';
+import '../widgets/pressable.dart';
 
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
@@ -32,11 +37,67 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   double _liveAccuracy = 0;
   StreamSubscription<Position>? _gpsSub;
 
+  /// Basemap choice, remembered between sessions.
+  MapLayerSource _layer = MapLayerSource.topo;
+  static const _kLayerKey = 'map_layer_v1';
+
+  /// Where we are guiding the user, if anywhere.
+  LatLng? _navTarget;
+  String? _navLabel;
+
   @override
   void initState() {
     super.initState();
+    _restoreLayer();
     _startLiveGps();
   }
+
+  Future<void> _restoreLayer() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = MapLayerSource.byId(prefs.getString(_kLayerKey));
+      if (mounted) setState(() => _layer = saved);
+    } catch (_) {}
+  }
+
+  Future<void> _setLayer(MapLayerSource layer) async {
+    setState(() => _layer = layer);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kLayerKey, layer.id);
+    } catch (_) {}
+  }
+
+  /// Guidance from where we are to [_navTarget], using the heading implied by
+  /// the last leg of the track. Null when we have no fix or no target.
+  NavInstruction? get _navInstruction {
+    final me = _livePosition;
+    final target = _navTarget;
+    if (me == null || target == null) return null;
+    final pts = ref
+        .read(trailProvider)
+        .points
+        .map((p) => LatLng(p.latitude, p.longitude))
+        .toList();
+    return NavigationService.guide(
+      from: me,
+      to: target,
+      headingDeg: NavigationService.headingFromTrack([...pts, me]),
+    );
+  }
+
+  void _navigateTo(LatLng target, String label) {
+    setState(() {
+      _navTarget = target;
+      _navLabel = label;
+    });
+    _mapController.move(target, _mapController.camera.zoom);
+  }
+
+  void _stopNavigating() => setState(() {
+        _navTarget = null;
+        _navLabel = null;
+      });
 
   @override
   void dispose() {
@@ -104,6 +165,150 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
+  Future<void> _openAttribution() async {
+    try {
+      await launchUrl(Uri.parse(_layer.attributionUrl),
+          mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
+
+  void _showLayerPicker() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppTheme.surfaceContainerLowest,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (sheetCtx) => _LayerSheet(
+        active: _layer,
+        onPick: (l) {
+          Navigator.pop(sheetCtx);
+          _setLayer(l);
+        },
+        onDownload: () {
+          Navigator.pop(sheetCtx);
+          _downloadArea();
+        },
+      ),
+    );
+  }
+
+  /// Pre-fetch the visible area so it survives losing signal. Android only —
+  /// see [TileAreaDownloader.isSupported].
+  Future<void> _downloadArea() async {
+    if (!TileAreaDownloader.isSupported) {
+      _toast(TileAreaDownloader.unsupportedMessage);
+      return;
+    }
+
+    final bounds = _mapController.camera.visibleBounds;
+    final z0 = _mapController.camera.zoom.round().clamp(1, _layer.maxZoom);
+    final z1 = (z0 + 3).clamp(z0, _layer.maxZoom);
+    final estimate = TileAreaDownloader.estimateTiles(
+      north: bounds.north, south: bounds.south,
+      east: bounds.east, west: bounds.west,
+      minZoom: z0, maxZoom: z1,
+    );
+
+    if (!mounted) return;
+    // Tell the user the cost before spending their data, not after.
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        backgroundColor: AppTheme.surfaceContainerLowest,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
+        title: Text('Save this area offline', style: AppTheme.h2()),
+        content: Text(
+          'Downloads about $estimate ${_layer.name.toLowerCase()} tiles '
+          '(roughly ${(estimate * 18 / 1024).toStringAsFixed(1)} MB) for zoom '
+          '$z0–$z1, so this area keeps working with no signal.',
+          style: AppTheme.body(color: AppTheme.onSurface).copyWith(height: 1.5),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('Download')),
+        ],
+      ),
+    );
+    if (go != true || !mounted) return;
+
+    final downloader = TileAreaDownloader();
+    final progress = ValueNotifier<double>(0);
+    var cancelled = false;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (c) => AlertDialog(
+        backgroundColor: AppTheme.surfaceContainerLowest,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
+        title: Text('Saving offline map', style: AppTheme.h2()),
+        content: ValueListenableBuilder<double>(
+          valueListenable: progress,
+          builder: (_, v, __) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LinearProgressIndicator(
+                value: v,
+                minHeight: 6,
+                backgroundColor: AppTheme.surfaceContainerHigh,
+                color: AppTheme.primary,
+              ),
+              const SizedBox(height: 12),
+              Text('${(v * 100).round()}%', style: AppTheme.bodyBold()),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              cancelled = true;
+              downloader.cancel();
+              Navigator.pop(c);
+            },
+            child: const Text('Stop'),
+          ),
+        ],
+      ),
+    );
+
+    try {
+      final saved = await downloader.download(
+        urlTemplate: _layer.urlTemplate,
+        north: bounds.north, south: bounds.south,
+        east: bounds.east, west: bounds.west,
+        minZoom: z0, maxZoom: z1,
+        onProgress: (done, total) =>
+            progress.value = total == 0 ? 0 : done / total,
+      );
+      if (!mounted) return;
+      if (!cancelled) Navigator.of(context).pop();
+      _toast('$saved tiles saved. This area now works offline.');
+    } catch (e) {
+      if (!mounted) return;
+      if (!cancelled) Navigator.of(context).pop();
+      _toast('Could not finish the download.');
+    } finally {
+      progress.dispose();
+    }
+  }
+
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: AppTheme.primary,
+      content: Text(message),
+    ));
+  }
+
   Future<void> _requestTrailTip() async {
     if (_tipLoading) return;
     final trail = ref.read(trailProvider);
@@ -111,11 +316,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     if (current == null) return;
 
     setState(() => _tipLoading = true);
+    final nav = _navInstruction;
     final ctx =
         'Position: ${current.latitude.toStringAsFixed(4)}, ${current.longitude.toStringAsFixed(4)}. '
         'Altitude: ${current.altitude.toStringAsFixed(0)}m. '
         'Distance walked: ${trail.distanceKm.toStringAsFixed(2)} km in ${trail.trackingDuration}. '
-        'Return bearing: ${trail.returnBearing ?? "unknown"}.';
+        'Return bearing: ${trail.returnBearing ?? "unknown"}. '
+        'Basemap: ${_layer.name}. '
+        '${nav == null ? "Not navigating to anything." : "Navigating to ${_navLabel ?? "a pin"}: ${nav.text}, ${nav.distanceLabel} away, bearing ${nav.compass}."}';
 
     final tip = await _ai.chatWithPrompt(
       systemPrompt: AIService.trailGuidePrompt,
@@ -261,10 +469,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
                 children: [
                   TileLayer(
-                    urlTemplate:
-                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    urlTemplate: _layer.urlTemplate,
                     userAgentPackageName: 'com.trailguard.ai',
                     tileProvider: _tileProvider,
+                    // Past a source's published zoom the tiles 404 and the map
+                    // goes blank; overzoom the last good level instead.
+                    maxNativeZoom: _layer.maxZoom,
+                    // Hold more tiles around the viewport so panning offline
+                    // shows cached map rather than grey holes.
+                    keepBuffer: 4,
                   ),
                   if (points.length >= 2)
                     PolylineLayer(
@@ -275,6 +488,27 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                               ? AppTheme.outline
                               : AppTheme.userBubble,
                           strokeWidth: 6,
+                          // Dotted reads as "a track you walked" rather than
+                          // "a road", and stays legible over busy topo tiles.
+                          pattern: const StrokePattern.dotted(
+                            spacingFactor: 1.6,
+                          ),
+                        ),
+                      ],
+                    ),
+                  // Direct line to whatever we are navigating to.
+                  if (_navTarget != null && _livePosition != null)
+                    PolylineLayer(
+                      polylines: [
+                        Polyline(
+                          points: [_livePosition!, _navTarget!],
+                          color: AppTheme.primary,
+                          strokeWidth: 3,
+                          // Not const: the constructor asserts on
+                          // segments.length, which const eval rejects.
+                          pattern: StrokePattern.dashed(
+                            segments: const [12, 10],
+                          ),
                         ),
                       ],
                     ),
@@ -285,8 +519,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           width: 120,
                           height: 70,
                           point: LatLng(m.latitude, m.longitude),
-                          child: _PinMarker(
-                              label: m.label, icon: _iconFor(m.icon)),
+                          child: Pressable(
+                            minSize: 0,
+                            label: 'Navigate to ${m.label}',
+                            tooltip: 'Guide me to ${m.label}',
+                            borderRadius:
+                                BorderRadius.circular(AppTheme.radiusCard),
+                            onPressed: () => _navigateTo(
+                                LatLng(m.latitude, m.longitude), m.label),
+                            child: _PinMarker(
+                                label: m.label, icon: _iconFor(m.icon)),
+                          ),
                         ),
                       if (points.isNotEmpty)
                         Marker(
@@ -382,23 +625,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: Column(
                 children: [
-                  GestureDetector(
-                    onTap: _openSearch,
-                    child: Container(
+                  Pressable(
+                    elevation: 3,
+                    onPressed: _openSearch,
+                    label: 'Search pins, ask AI, or start a trail',
+                    tooltip: '',
+                    borderRadius: BorderRadius.circular(16),
+                    background:
+                        AppTheme.surfaceContainerLowest.withValues(alpha: 0.95),
+                    child: Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 10),
-                      decoration: BoxDecoration(
-                        color:
-                            AppTheme.surfaceContainerLowest.withOpacity(0.95),
-                        borderRadius: BorderRadius.circular(18),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppTheme.onPrimaryFixed.withOpacity(0.06),
-                            blurRadius: 14,
-                            offset: const Offset(0, 4),
-                          )
-                        ],
-                      ),
                       child: Row(
                         children: [
                           const Icon(Icons.search_rounded,
@@ -427,6 +664,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           ),
                         ],
                       ),
+                    ),
+                  ),
+                  if (_navTarget != null && _navInstruction != null) ...[
+                    const SizedBox(height: 10),
+                    _NavBanner(
+                      nav: _navInstruction!,
+                      label: _navLabel ?? 'Destination',
+                      onDismiss: _stopNavigating,
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  // Every one of these tile licences requires attribution.
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: _AttributionChip(
+                      text: _layer.attribution,
+                      onTap: _openAttribution,
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -479,11 +733,33 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         onTap: _showPinDialog,
                       ),
                     ),
+                  if (points.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _FabButton(
+                        icon: _navTarget == null
+                            ? Icons.assistant_direction_rounded
+                            : Icons.close_rounded,
+                        color: _navTarget == null
+                            ? AppTheme.secondaryFixed
+                            : AppTheme.errorContainer,
+                        iconColor: _navTarget == null
+                            ? AppTheme.onSecondaryFixedVariant
+                            : AppTheme.onErrorContainer,
+                        tooltip: _navTarget == null
+                            ? 'Guide me back to start'
+                            : 'Stop guiding',
+                        onTap: () => _navTarget == null
+                            ? _navigateTo(points.first, 'Start of trail')
+                            : _stopNavigating(),
+                      ),
+                    ),
                   _FabButton(
                     icon: Icons.layers_rounded,
                     color: AppTheme.surfaceContainerLowest,
                     iconColor: AppTheme.primary,
-                    onTap: () {},
+                    tooltip: 'Map style & offline',
+                    onTap: _showLayerPicker,
                   ),
                   const SizedBox(height: 10),
                   _FabButton(
@@ -582,7 +858,10 @@ class _TrackingSheet extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          GestureDetector(
+          Semantics(
+            button: true,
+            label: expanded ? 'Collapse trail panel' : 'Expand trail panel',
+            child: GestureDetector(
             onTap: onToggle,
             behavior: HitTestBehavior.opaque,
             child: Container(
@@ -590,10 +869,11 @@ class _TrackingSheet extends StatelessWidget {
               height: 5,
               margin: const EdgeInsets.symmetric(vertical: 6),
               decoration: BoxDecoration(
-                color: AppTheme.outlineVariant.withOpacity(0.6),
+                color: AppTheme.outlineVariant.withValues(alpha: 0.6),
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
+          ),
           ),
           if (!expanded)
             _CompactRow(
@@ -755,7 +1035,7 @@ class _ExpandedSheet extends StatelessWidget {
                   onPressed: onStart,
                   icon: const Icon(Icons.play_circle_outline_rounded,
                       size: 20),
-                  label: const Text('START TRACKING'),
+                  label: const Text('Start tracking'),
                 ),
               ),
               const SizedBox(width: 10),
@@ -764,7 +1044,7 @@ class _ExpandedSheet extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: null,
                   icon: const Icon(Icons.psychology_rounded, size: 18),
-                  label: const Text('AI TIP'),
+                  label: const Text('AI tip'),
                 ),
               ),
             ],
@@ -796,7 +1076,7 @@ class _ExpandedSheet extends StatelessWidget {
                     child: ElevatedButton.icon(
                       onPressed: onStop,
                       icon: const Icon(Icons.stop_circle_rounded, size: 20),
-                      label: const Text('STOP'),
+                      label: const Text('Stop'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.error,
                       ),
@@ -810,7 +1090,7 @@ class _ExpandedSheet extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: onAiTip,
                   icon: const Icon(Icons.psychology_rounded, size: 18),
-                  label: const Text('AI TIP'),
+                  label: const Text('AI tip'),
                 ),
               ),
             ],
@@ -947,7 +1227,7 @@ class _SearchSheetState extends State<_SearchSheet> {
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
                           color: AppTheme.surfaceContainerLow,
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
                           'Start tracking and tap the pin button to save places — hotels, water sources, hazards. They\'ll appear here.',
@@ -1152,7 +1432,7 @@ class _PinSheetState extends State<_PinSheet> {
               Expanded(
                 child: OutlinedButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('CANCEL'),
+                  child: const Text('Cancel'),
                 ),
               ),
               const SizedBox(width: 10),
@@ -1161,7 +1441,7 @@ class _PinSheetState extends State<_PinSheet> {
                   onPressed: () => Navigator.of(context)
                       .pop(_PinChoice(_ctrl.text, _iconKey)),
                   icon: const Icon(Icons.push_pin_rounded, size: 18),
-                  label: const Text('PIN HERE'),
+                  label: const Text('Pin here'),
                 ),
               ),
             ],
@@ -1289,7 +1569,7 @@ class _TrailGuideBubble extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppTheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
             color: AppTheme.onPrimaryFixed.withOpacity(0.12),
@@ -1306,7 +1586,7 @@ class _TrailGuideBubble extends StatelessWidget {
             height: 38,
             decoration: BoxDecoration(
               color: AppTheme.primaryFixed,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(Icons.park_rounded, color: AppTheme.primary),
           ),
@@ -1315,7 +1595,7 @@ class _TrailGuideBubble extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('AI TRAIL GUIDE',
+                Text('AI trail guide',
                     style: AppTheme.label(color: AppTheme.primary)),
                 const SizedBox(height: 4),
                 if (loading)
@@ -1337,6 +1617,7 @@ class _TrailGuideBubble extends StatelessWidget {
             ),
           ),
           IconButton(
+            tooltip: 'Close',
             onPressed: onClose,
             icon: const Icon(Icons.close_rounded, size: 18),
             color: AppTheme.onSurfaceVariant,
@@ -1364,9 +1645,16 @@ class _MapStat extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: AppTheme.label()),
+          Text(label,
+              style: AppTheme.label(), maxLines: 1, overflow: TextOverflow.ellipsis),
           const SizedBox(height: 4),
-          Text(value, style: AppTheme.h2()),
+          // Same reason as home's _TrailStat: scale down rather than wrap, so
+          // one long value cannot make this box taller than its siblings.
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(value, style: AppTheme.h2(), maxLines: 1),
+          ),
         ],
       ),
     );
@@ -1408,5 +1696,241 @@ class _FabButton extends StatelessWidget {
       ),
     );
     return tooltip == null ? btn : Tooltip(message: tooltip!, child: btn);
+  }
+}
+
+
+// ─── Turn-by-turn banner ────────────────────────────────────────────────────
+
+class _NavBanner extends StatelessWidget {
+  final NavInstruction nav;
+  final String label;
+  final VoidCallback onDismiss;
+
+  const _NavBanner({
+    required this.nav,
+    required this.label,
+    required this.onDismiss,
+  });
+
+  static const _icons = {
+    TurnDirection.straight: Icons.straight_rounded,
+    TurnDirection.slightLeft: Icons.turn_slight_left_rounded,
+    TurnDirection.left: Icons.turn_left_rounded,
+    TurnDirection.sharpLeft: Icons.turn_sharp_left_rounded,
+    TurnDirection.around: Icons.u_turn_left_rounded,
+    TurnDirection.slightRight: Icons.turn_slight_right_rounded,
+    TurnDirection.right: Icons.turn_right_rounded,
+    TurnDirection.sharpRight: Icons.turn_sharp_right_rounded,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final arrived = nav.arrived;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: arrived ? AppTheme.secondaryFixed : AppTheme.primary,
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.onPrimaryFixed.withValues(alpha: 0.18),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          )
+        ],
+      ),
+      child: Row(
+        children: [
+          // With a heading we show a turn glyph; without one the arrow acts as
+          // a compass needle pointing at the target.
+          if (nav.compassOnly && !arrived)
+            Transform.rotate(
+              angle: nav.arrowRadians,
+              child: const Icon(Icons.navigation_rounded,
+                  color: Colors.white, size: 30),
+            )
+          else
+            Icon(
+              arrived
+                  ? Icons.flag_rounded
+                  : (_icons[nav.turn] ?? Icons.straight_rounded),
+              color: arrived ? AppTheme.onSecondaryFixedVariant : Colors.white,
+              size: 30,
+            ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  nav.text,
+                  style: AppTheme.h3(
+                      color: arrived
+                          ? AppTheme.onSecondaryFixedVariant
+                          : Colors.white),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  arrived
+                      ? label
+                      : '${nav.distanceLabel} · $label · ${nav.compass}',
+                  style: AppTheme.body(
+                    color: arrived
+                        ? AppTheme.onSecondaryFixedVariant
+                        : Colors.white70,
+                  ).copyWith(fontSize: 12),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          Pressable(
+            circle: true,
+            minSize: 40,
+            label: 'Stop guiding',
+            onPressed: onDismiss,
+            child: Icon(Icons.close_rounded,
+                size: 20,
+                color: arrived
+                    ? AppTheme.onSecondaryFixedVariant
+                    : Colors.white),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Attribution ────────────────────────────────────────────────────────────
+
+class _AttributionChip extends StatelessWidget {
+  final String text;
+  final VoidCallback onTap;
+  const _AttributionChip({required this.text, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Pressable(
+      onPressed: onTap,
+      minSize: 0,
+      haptic: false,
+      label: 'Map data attribution',
+      tooltip: 'Open licence',
+      background: AppTheme.surfaceContainerLowest.withValues(alpha: 0.85),
+      borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        child: Text(
+          text,
+          style: AppTheme.body(color: AppTheme.onSurfaceVariant)
+              .copyWith(fontSize: 10),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Basemap picker + offline download ──────────────────────────────────────
+
+class _LayerSheet extends StatelessWidget {
+  final MapLayerSource active;
+  final ValueChanged<MapLayerSource> onPick;
+  final VoidCallback onDownload;
+
+  const _LayerSheet({
+    required this.active,
+    required this.onPick,
+    required this.onDownload,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppTheme.outlineVariant.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text('Map style', style: AppTheme.h2()),
+            const SizedBox(height: 12),
+            for (final layer in MapLayerSource.all) ...[
+              Pressable(
+                onPressed: () => onPick(layer),
+                label: layer.name,
+                tooltip: layer.blurb,
+                borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+                background: layer.id == active.id
+                    ? AppTheme.primaryFixed
+                    : AppTheme.surfaceContainerLow,
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
+                    children: [
+                      Icon(layer.icon, color: AppTheme.primary, size: 22),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(layer.name, style: AppTheme.h3()),
+                            const SizedBox(height: 2),
+                            Text(layer.blurb,
+                                style: AppTheme.body().copyWith(fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                      if (layer.id == active.id)
+                        const Icon(Icons.check_circle_rounded,
+                            color: AppTheme.primary, size: 20),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+            const SizedBox(height: 8),
+            Text('Offline', style: AppTheme.h2()),
+            const SizedBox(height: 8),
+            Text(
+              TileAreaDownloader.isSupported
+                  ? 'Save the area you are looking at so it keeps working '
+                      'with no signal.'
+                  : TileAreaDownloader.unsupportedMessage,
+              style:
+                  AppTheme.body(color: AppTheme.onSurface).copyWith(height: 1.5),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: TileAreaDownloader.isSupported ? onDownload : null,
+                icon: const Icon(Icons.download_for_offline_rounded, size: 20),
+                label: const Text('Save this area'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

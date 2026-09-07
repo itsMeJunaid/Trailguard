@@ -1,8 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../core/platform/local_files.dart';
 import '../models/chat_message.dart';
 import '../models/chat_session.dart';
 import '../models/trail_point.dart';
@@ -11,70 +9,9 @@ class StorageService {
   static const _selectedModelKey = 'selected_model_variant';
   static const _modelPathKey = 'model_path';
 
-  Future<String> get _localPath async {
-    final dir = await getApplicationDocumentsDirectory();
-    return dir.path;
-  }
-
-  static const _modelExtensions = {
-    '.litertlm', '.tflite', '.task', '.bin', '.gguf', '.pt'
-  };
-
-  Future<List<String>> scanForModels() async {
-    // Best-effort permission request. If the user denies, we still try — most
-    // Android versions let us read Download/ via the MediaStore without it.
-    try {
-      if (!await Permission.manageExternalStorage.isGranted) {
-        await Permission.manageExternalStorage.request();
-      }
-    } catch (_) {}
-    try {
-      if (!await Permission.storage.isGranted) {
-        await Permission.storage.request();
-      }
-    } catch (_) {}
-
-    final found = <String>{};
-    final dirs = <String>[
-      '/storage/emulated/0/Download/gemma_model',
-      '/storage/emulated/0/Download',
-      '/storage/emulated/0/Documents',
-      '/storage/emulated/0/TrailGuardModels',
-    ];
-
-    try {
-      final appExt = await getExternalStorageDirectory();
-      if (appExt != null) {
-        dirs.add(appExt.path);
-        dirs.add('${appExt.path}/gemma_model');
-      }
-    } catch (_) {}
-
-    for (final p in dirs) {
-      await _scanDir(Directory(p), found, depth: 2);
-    }
-
-    return found.toList();
-  }
-
-  Future<void> _scanDir(Directory dir, Set<String> acc, {int depth = 2}) async {
-    try {
-      if (!await dir.exists()) return;
-      await for (final e in dir.list(followLinks: false)) {
-        if (e is File) {
-          final lower = e.path.toLowerCase();
-          for (final ext in _modelExtensions) {
-            if (lower.endsWith(ext)) {
-              acc.add(e.path);
-              break;
-            }
-          }
-        } else if (e is Directory && depth > 0) {
-          await _scanDir(e, acc, depth: depth - 1);
-        }
-      }
-    } catch (_) {}
-  }
+  /// Model files only exist on a real filesystem; the browser build returns
+  /// an empty list and the Model Setup screen explains why.
+  Future<List<String>> scanForModels() => scanForModelFiles();
 
   Future<String?> getModelPath(String filename) async {
     final paths = await scanForModels();
@@ -86,18 +23,14 @@ class StorageService {
   }
 
   Future<void> saveTrail(List<TrailPoint> points, String trailName) async {
-    final path = await _localPath;
-    final file = File('$path/trail_$trailName.json');
     final data = jsonEncode(points.map((p) => p.toJson()).toList());
-    await file.writeAsString(data);
+    await writeDocText('trail_$trailName.json', data);
   }
 
   Future<List<TrailPoint>> loadTrail(String trailName) async {
     try {
-      final path = await _localPath;
-      final file = File('$path/trail_$trailName.json');
-      if (!await file.exists()) return [];
-      final raw = await file.readAsString();
+      final raw = await readDocText('trail_$trailName.json');
+      if (raw == null || raw.isEmpty) return [];
       final list = jsonDecode(raw) as List;
       return list.map((j) => TrailPoint.fromJson(j)).toList();
     } catch (_) {

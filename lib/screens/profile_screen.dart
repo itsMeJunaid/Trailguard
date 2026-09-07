@@ -1,9 +1,10 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import '../core/platform/local_files.dart';
 import '../core/theme.dart';
+import '../widgets/pressable.dart';
 import '../models/user_profile.dart';
 import '../providers/profile_provider.dart';
 
@@ -57,7 +58,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (x == null) return;
     final saved = await ref
         .read(profileProvider.notifier)
-        .setPicture(File(x.path));
+        .setPicture(x.path);
     setState(() => _picPath = saved);
   }
 
@@ -133,6 +134,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         leading: widget.onboarding
             ? null
             : IconButton(
+                tooltip: 'Back',
                 icon: const Icon(Icons.arrow_back_rounded,
                     color: AppTheme.primary),
                 onPressed: () => Navigator.maybePop(context),
@@ -147,8 +149,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         children: [
           // Avatar picker
           Center(
-            child: GestureDetector(
-              onTap: _pickPic,
+            child: Pressable(
+              circle: true,
+              onPressed: _pickPic,
+              label: 'Change profile photo',
+              tooltip: 'Change photo',
               child: Stack(
                 alignment: Alignment.bottomRight,
                 children: [
@@ -162,8 +167,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           color: AppTheme.surfaceContainerLowest, width: 4),
                     ),
                     clipBehavior: Clip.antiAlias,
-                    child: _picPath != null && File(_picPath!).existsSync()
-                        ? Image.file(File(_picPath!), fit: BoxFit.cover)
+                    child: _picPath != null && localFileExists(_picPath!)
+                        ? localImage(_picPath!, fit: BoxFit.cover)
                         : const Icon(Icons.person_rounded,
                             color: AppTheme.primary, size: 56),
                   ),
@@ -310,10 +315,10 @@ class _MenuRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: AppTheme.surfaceContainerLowest,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
