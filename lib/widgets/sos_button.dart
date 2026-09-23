@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../core/theme.dart';
 import '../screens/rescue_chat_screen.dart';
+import 'pressable.dart';
 
 class SOSButton extends StatelessWidget {
   const SOSButton({super.key});
 
   Future<void> _openRescue(BuildContext context) async {
+    HapticFeedback.heavyImpact();
     await Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
@@ -16,16 +19,16 @@ class SOSButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return Pressable(
+      label: 'Emergency SOS. Opens Rescue Dispatch.',
+      tooltip: 'Open Rescue Dispatch',
+      haptic: false, // _openRescue fires a heavier one
+      borderRadius: BorderRadius.circular(16),
+      background: AppTheme.errorContainer,
+      onPressed: () => _openRescue(context),
       onLongPress: () => _openRescue(context),
-      onDoubleTap: () => _openRescue(context),
-      child: Container(
-        width: double.infinity,
+      child: Padding(
         padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: AppTheme.errorContainer,
-          borderRadius: BorderRadius.circular(24),
-        ),
         child: Row(
           children: [
             Container(
@@ -43,12 +46,11 @@ class SOSButton extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('EMERGENCY SOS',
-                      style:
-                          AppTheme.h3(color: AppTheme.onErrorContainer)),
+                  Text('Emergency SOS',
+                      style: AppTheme.h3(color: AppTheme.onErrorContainer)),
                   const SizedBox(height: 2),
                   Text(
-                    'Long-press — opens Rescue Dispatch simulation',
+                    'Step-by-step first aid, offline',
                     style: AppTheme.body(color: AppTheme.onErrorContainer),
                   ),
                 ],

@@ -52,7 +52,7 @@ class AINotifier extends StateNotifier<AIState> {
       isLoading: false,
       isModelLoaded: success,
       loadedVariant: success ? variant : null,
-      error: success ? null : 'Failed to load model',
+      error: success ? null : (_aiService.lastLoadError ?? 'Failed to load model'),
     );
     return success;
   }

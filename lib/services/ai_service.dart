@@ -1,7 +1,9 @@
 import 'dart:async';
-import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../core/constants.dart';
+import '../core/platform/local_files.dart';
+import 'survival_kb.dart';
 import '../models/model_config.dart';
 import '../models/user_profile.dart';
 
@@ -69,13 +71,49 @@ class AIService {
     }
   }
 
+  /// The LiteRT-LM engine is a native Kotlin/Swift bridge. In the browser
+  /// there is nothing on the other end of the MethodChannel, so the app runs
+  /// on [_stubResponse] — its built-in offline survival knowledge base.
+  bool get isEngineAvailable => !kIsWeb;
+
+  /// Why the last [loadModel] failed. "Failed to load model" on its own sends
+  /// people round in circles — every distinct cause gets its own sentence.
+  String? lastLoadError;
+
+  static const int _minModelBytes = 50 * 1024 * 1024;
+
   Future<bool> loadModel(String modelPath, GemmaVariant variant) async {
+    lastLoadError = null;
+
+    if (!isEngineAvailable) {
+      lastLoadError = 'The LiteRT-LM engine is Android-only — the browser build '
+          'cannot load a model.';
+      return false;
+    }
+
+    // Check the file BEFORE the backend, and report which check failed.
+    // Previously any failure here returned false silently, which is why CPU
+    // and GPU produced the identical "Failed to load model" — the backend was
+    // never reached.
     try {
-      final f = File(modelPath);
-      if (!await f.exists() || await f.length() < 50 * 1024 * 1024) {
+      if (!localFileExists(modelPath)) {
+        lastLoadError = modelPath.startsWith('/storage/emulated/0/')
+            ? 'Android will not let the app read $modelPath. Files in Download '
+                'need "All files access" — grant it, or use "Import model file" '
+                'to pick the file directly.'
+            : 'No file at $modelPath.';
         return false;
       }
-    } catch (_) {
+      final bytes = await localFileSize(modelPath);
+      if (bytes < _minModelBytes) {
+        lastLoadError =
+            'That file is only ${(bytes / 1024 / 1024).toStringAsFixed(1)} MB. '
+            'A Gemma model is 2.6 GB+, so the download stopped early or the '
+            'file is an error page.';
+        return false;
+      }
+    } catch (e) {
+      lastLoadError = 'Could not read $modelPath — $e';
       return false;
     }
 
@@ -92,11 +130,16 @@ class AIService {
         return true;
       }
     } on PlatformException catch (e) {
-      print('LiteRT-LM loadModel: ${e.code} ${e.message}');
+      // The native engine's own message — out of memory, wrong format, an
+      // unsupported GPU backend. Far more useful than a generic failure.
+      lastLoadError = e.message?.isNotEmpty == true
+          ? 'Engine: ${e.message}'
+          : 'Engine refused the model (${e.code}).';
     } catch (e) {
-      print('LiteRT-LM loadModel: $e');
+      lastLoadError = 'Engine: $e';
     }
     _modelLoaded = false;
+    lastLoadError ??= 'The engine returned false without an error.';
     return false;
   }
 
@@ -282,11 +325,11 @@ class AIService {
       ];
       return '${yc.isEmpty ? "" : "$you, "}${t[DateTime.now().minute % t.length]}';
     }
-    if (profile != null && !profile.isEmpty) {
-      return '⚠️ No AI model loaded, ${you.isEmpty ? "friend" : you}. '
-          'Profile → Model Setup → download & load a Gemma .litertlm model.';
-    }
-    return '⚠️ No AI model loaded. Profile → Model Setup → download & load.';
+    // No model loaded — the whole web build, and on-device before the
+    // download finishes. Answer from the built-in guide rather than handing
+    // back an error: someone asking how to purify water needs the answer.
+    return SurvivalKnowledgeBase.answer(msg, profile: profile) ??
+        SurvivalKnowledgeBase.notFound(profile: profile);
   }
 
   String _rescueStub(String m, String yc, UserProfile? p) {

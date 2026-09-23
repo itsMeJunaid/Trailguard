@@ -56,6 +56,9 @@ dependencies {
     implementation "androidx.multidex:multidex:2.0.1"
 
     // Google AI Edge LiteRT-LM (Gemma .litertlm runtime, same as AI Edge Gallery)
-    implementation "com.google.ai.edge.litertlm:litertlm-android:latest.release"
+    // Pinned: "latest.release" is a dynamic version — it needs the network at
+    // build time and can swap the engine API out from under LiteRtLmPlugin.kt
+    // between two builds of the same commit. 0.17.1 is current.
+    implementation "com.google.ai.edge.litertlm:litertlm-android:0.17.1"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
 }

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description"
+        content="TrailGuard AI — offline-first hiking and survival companion: AI guidance, GPS trail tracking, image scouting and SOS dispatch.">
+  <meta name="theme-color" content="#0F5238">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="TrailGuard AI">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>TrailGuard AI</title>
+  <link rel="manifest" href="manifest.json">
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background-color: #E8FFF0;
+      overflow: hidden;
+    }
+    /* Splash shown until the Flutter engine paints its first frame. */
+    #loading {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      background: #E8FFF0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #0F5238;
+      transition: opacity .35s ease;
+    }
+    #loading.gone { opacity: 0; pointer-events: none; }
+    #loading .mark {
+      width: 64px;
+      height: 64px;
+      border-radius: 20px;
+      background: #0F5238;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 30px;
+    }
+    #loading .name { font-size: 15px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; }
+    #loading .bar { width: 148px; height: 3px; border-radius: 3px; background: #B1F0CE; overflow: hidden; }
+    #loading .bar i { display: block; width: 40%; height: 100%; background: #0F5238; animation: slide 1.1s ease-in-out infinite; }
+    @keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="mark">🏔️</div>
+    <div class="name">TrailGuard AI</div>
+    <div class="bar"><i></i></div>
+  </div>
+
+  <script>
+    // Drop the splash once Flutter has taken over the screen.
+    window.addEventListener('flutter-first-frame', function () {
+      var el = document.getElementById('loading');
+      if (!el) return;
+      el.classList.add('gone');
+      setTimeout(function () { el.remove(); }, 400);
+    });
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

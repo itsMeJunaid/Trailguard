@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user_profile.dart';
 import '../services/profile_service.dart';
@@ -34,8 +33,8 @@ class ProfileNotifier extends StateNotifier<UserProfile?> {
     state = profile;
   }
 
-  Future<String> setPicture(File file) async {
-    final path = await _service.saveProfilePicture(file);
+  Future<String> setPicture(String sourcePath) async {
+    final path = await _service.saveProfilePicture(sourcePath);
     if (state != null) {
       final updated = state!.copyWith(profilePicPath: path);
       await save(updated);

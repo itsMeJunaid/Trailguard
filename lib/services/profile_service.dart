@@ -1,7 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../core/platform/local_files.dart';
 import '../models/user_profile.dart';
 
 class ProfileService {
@@ -30,12 +29,8 @@ class ProfileService {
   }
 
   /// Copy a picked image into app documents dir so the reference survives
-  /// when the picker's temp file is garbage-collected.
-  Future<String> saveProfilePicture(File source) async {
-    final dir = await getApplicationDocumentsDirectory();
-    final target =
-        File('${dir.path}/profile_${DateTime.now().millisecondsSinceEpoch}.jpg');
-    await source.copy(target.path);
-    return target.path;
-  }
+  /// when the picker's temp file is garbage-collected. On web the picker's
+  /// blob URL already outlives the pick, so the path is returned as-is.
+  Future<String> saveProfilePicture(String sourcePath) =>
+      persistPickedImage(sourcePath);
 }

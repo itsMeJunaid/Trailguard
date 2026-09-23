@@ -17,7 +17,7 @@ class CameraResultCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: AppTheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -39,7 +39,7 @@ class CameraResultCard extends StatelessWidget {
               ElevatedButton.icon(
                 onPressed: onAskAI,
                 icon: const Icon(Icons.smart_toy_rounded, size: 16),
-                label: const Text('ASK AI'),
+                label: const Text('Ask AI'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.secondaryFixed,
                   foregroundColor: AppTheme.onSecondaryFixedVariant,
@@ -54,7 +54,7 @@ class CameraResultCard extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: AppTheme.errorContainer,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,

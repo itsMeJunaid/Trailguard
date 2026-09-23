@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'core/theme.dart';
@@ -59,6 +61,48 @@ class TrailGuardApp extends ConsumerWidget {
       theme: AppTheme.lightTheme,
       routerConfig: buildRouter(ref),
       debugShowCheckedModeBanner: false,
+      builder: (context, child) => _WebShell(child: child ?? const SizedBox()),
+    );
+  }
+}
+
+/// TrailGuard is a phone-shaped app. On a desktop browser the same layout
+/// stretched to 1900px reads as broken, so above [_phoneWidth] the web build
+/// pins the app to a centred phone-width frame. Set [_frameWideWeb] to false
+/// to let it fill the window instead. No effect on Android/iOS.
+const bool _frameWideWeb = true;
+const double _phoneWidth = 440;
+
+class _WebShell extends StatelessWidget {
+  final Widget child;
+  const _WebShell({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!kIsWeb || !_frameWideWeb) return child;
+
+    final media = MediaQuery.of(context);
+    if (media.size.width <= _phoneWidth + 48) return child;
+
+    final height = media.size.height;
+
+    return ColoredBox(
+      color: AppTheme.surfaceDim,
+      child: Center(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+          child: SizedBox(
+            width: _phoneWidth,
+            height: height,
+            // Give the app the frame's dimensions, not the window's, so
+            // MediaQuery-driven layout inside it stays phone-accurate.
+            child: MediaQuery(
+              data: media.copyWith(size: Size(_phoneWidth, height)),
+              child: child,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -139,7 +183,7 @@ class MainShell extends ConsumerWidget {
           child: Container(
             decoration: BoxDecoration(
               color: AppTheme.surfaceContainerLowest,
-              borderRadius: BorderRadius.circular(28),
+              borderRadius: BorderRadius.circular(AppTheme.radiusPill),
               boxShadow: [
                 BoxShadow(
                   color: AppTheme.onPrimaryFixed.withOpacity(0.08),
@@ -175,7 +219,7 @@ class _NavItem {
       {required this.path, required this.icon, required this.label});
 }
 
-class _NavPill extends StatelessWidget {
+class _NavPill extends StatefulWidget {
   final _NavItem item;
   final bool active;
   final VoidCallback onTap;
@@ -183,40 +227,73 @@ class _NavPill extends StatelessWidget {
       {required this.item, required this.active, required this.onTap});
 
   @override
+  State<_NavPill> createState() => _NavPillState();
+}
+
+class _NavPillState extends State<_NavPill> {
+  bool _focused = false;
+
+  @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: active ? AppTheme.primary : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                item.icon,
-                color: active
-                    ? Colors.white
-                    : AppTheme.primary.withOpacity(0.55),
-                size: 22,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                item.label.toUpperCase(),
-                style: AppTheme.label(
-                  color: active
-                      ? Colors.white
-                      : AppTheme.primary.withOpacity(0.55),
-                ).copyWith(fontSize: 9),
-              ),
-            ],
+    final item = widget.item;
+    final active = widget.active;
+    // 0.75, not 0.55: at 0.55 the inactive label computed to #7BA092 on white
+    // — 2.88:1, which fails WCAG at every threshold. 0.75 gives #4B7D6A, 4.73:1.
+    final inactive = AppTheme.primary.withValues(alpha: 0.75);
+
+    return Semantics(
+      button: true,
+      selected: active,
+      label: item.label,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            widget.onTap();
+          },
+          onFocusChange: (f) => setState(() => _focused = f),
+          borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+          hoverColor: AppTheme.hoverOverlay,
+          focusColor: AppTheme.focusOverlay,
+          highlightColor: AppTheme.pressedOverlay,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            constraints: const BoxConstraints(
+              minWidth: AppTheme.minTapTarget,
+              minHeight: AppTheme.minTapTarget,
+            ),
+            decoration: BoxDecoration(
+              color: active ? AppTheme.primary : Colors.transparent,
+              borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+              border: _focused
+                  ? Border.all(
+                      color: active ? Colors.white : AppTheme.primary,
+                      width: 2,
+                    )
+                  : null,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  item.icon,
+                  color: active ? Colors.white : inactive,
+                  size: 24,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  item.label,
+                  style: AppTheme.label(
+                    color: active ? Colors.white : inactive,
+                    // Sentence case, so the eyebrow tracking would be wrong here.
+                  ).copyWith(letterSpacing: 0.2, fontSize: 11),
+                ),
+              ],
+            ),
           ),
         ),
       ),

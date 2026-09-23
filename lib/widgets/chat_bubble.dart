@@ -1,11 +1,16 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
+import '../core/platform/local_files.dart';
 import '../core/theme.dart';
 import '../models/chat_message.dart';
+import 'pressable.dart';
 
 class ChatBubble extends StatelessWidget {
   final ChatMessage message;
-  const ChatBubble({super.key, required this.message});
+
+  /// Read this message aloud. Omitted for user messages and while streaming.
+  final VoidCallback? onSpeak;
+
+  const ChatBubble({super.key, required this.message, this.onSpeak});
 
   @override
   Widget build(BuildContext context) {
@@ -24,12 +29,12 @@ class ChatBubble extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 6),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: Image.file(
-                      File(message.imagePath!),
+                    child: localImage(
+                      message.imagePath!,
                       width: 220,
                       height: 160,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      errorWidget: const SizedBox.shrink(),
                     ),
                   ),
                 ),
@@ -140,9 +145,42 @@ class ChatBubble extends StatelessWidget {
                           style: AppTheme.label(
                               color: AppTheme.onSecondaryFixedVariant)),
                     ),
-                  Text(message.content,
-                      style: AppTheme.body(color: AppTheme.onSurfaceVariant)
-                          .copyWith(height: 1.55)),
+                  Text.rich(
+                    TextSpan(
+                      children: _inlineMarkdown(
+                        message.content,
+                        AppTheme.body(color: AppTheme.onSurfaceVariant)
+                            .copyWith(height: 1.55),
+                      ),
+                    ),
+                  ),
+                  if (onSpeak != null && message.content.trim().isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Pressable(
+                      onPressed: onSpeak,
+                      minSize: 36,
+                      label: 'Read this answer aloud',
+                      tooltip: 'Read aloud',
+                      background: AppTheme.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.volume_up_rounded,
+                                size: 16, color: AppTheme.primary),
+                            const SizedBox(width: 6),
+                            Text('Listen',
+                                style: AppTheme.bodyBold(
+                                        color: AppTheme.primary)
+                                    .copyWith(fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -162,4 +200,39 @@ class ChatBubble extends StatelessWidget {
     final m = t.minute.toString().padLeft(2, '0');
     return '$h:$m';
   }
+}
+
+
+/// Renders the small subset of markdown the AI and the offline guide actually
+/// emit: `**bold**` for headings and key terms, `_italic_` for asides.
+/// Anything else is left as literal text rather than silently swallowed.
+List<TextSpan> _inlineMarkdown(String text, TextStyle base) {
+  final spans = <TextSpan>[];
+  final pattern = RegExp(r'\*\*(.+?)\*\*|_([^_\n]+?)_');
+  var index = 0;
+
+  for (final m in pattern.allMatches(text)) {
+    if (m.start > index) {
+      spans.add(TextSpan(text: text.substring(index, m.start), style: base));
+    }
+    if (m.group(1) != null) {
+      spans.add(TextSpan(
+        text: m.group(1),
+        style: base.copyWith(
+          fontWeight: FontWeight.w800,
+          color: AppTheme.onSurface,
+        ),
+      ));
+    } else {
+      spans.add(TextSpan(
+        text: m.group(2),
+        style: base.copyWith(fontStyle: FontStyle.italic),
+      ));
+    }
+    index = m.end;
+  }
+  if (index < text.length) {
+    spans.add(TextSpan(text: text.substring(index), style: base));
+  }
+  return spans;
 }

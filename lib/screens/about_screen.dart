@@ -28,6 +28,7 @@ class AboutScreen extends StatelessWidget {
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         leading: IconButton(
+          tooltip: 'Back',
           icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.primary),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
@@ -45,7 +46,7 @@ class AboutScreen extends StatelessWidget {
                 end: Alignment.bottomRight,
                 colors: [AppTheme.primary, AppTheme.primaryContainer],
               ),
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: Column(
               children: [
@@ -87,7 +88,7 @@ class AboutScreen extends StatelessWidget {
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: AppTheme.surfaceContainerLowest,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -136,7 +137,7 @@ class AboutScreen extends StatelessWidget {
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: AppTheme.surfaceContainerLowest,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -236,7 +237,7 @@ class _CreditRow extends StatelessWidget {
               height: 36,
               decoration: BoxDecoration(
                 color: AppTheme.primaryFixed,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: AppTheme.primary, size: 18),
             ),

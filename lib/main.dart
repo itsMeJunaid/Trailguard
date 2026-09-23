@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app.dart';
+import 'core/platform/downloader_boot.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,7 +28,7 @@ void main() async {
   // when the user actually taps DOWNLOAD.
   unawaited(() async {
     try {
-      await FlutterDownloader.initialize(debug: false, ignoreSsl: false);
+      await bootDownloader();
     } catch (_) {}
   }());
 
