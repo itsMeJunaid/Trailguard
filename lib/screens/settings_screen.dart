@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../core/platform/local_files.dart';
 import '../core/theme.dart';
 import '../core/constants.dart';
 import '../models/model_config.dart';
@@ -23,6 +24,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _storage = StorageService();
   List<String> _foundModels = [];
   bool _scanning = false;
+  bool _importing = false;
 
   /// False in the browser: no LiteRT-LM bridge, no model files, no GPU backend.
   bool get _nativeEngine => AIService().isEngineAvailable;
@@ -44,13 +46,73 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _loadModel(String path, GemmaVariant variant) async {
     final ok = await ref.read(aiProvider.notifier).loadModel(path, variant);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    if (!mounted) return;
+    final reason = ref.read(aiProvider).error;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
         backgroundColor: ok ? AppTheme.primary : AppTheme.error,
         behavior: SnackBarBehavior.floating,
-        content: Text(ok ? 'Model loaded.' : 'Failed to load model.'),
+        duration: Duration(seconds: ok ? 3 : 10),
+        content: Text(ok ? 'Model loaded.' : (reason ?? 'Failed to load model.')),
       ));
+  }
+
+  /// Hand the model over through the system file picker. This needs no storage
+  /// permission — the picker grants access to the single chosen file — so it
+  /// works on Android 11+ where Download/ is otherwise unreadable.
+  Future<void> _importModel() async {
+    setState(() => _importing = true);
+    String? path;
+    String? failure;
+    try {
+      path = await importModelFile();
+    } catch (e) {
+      failure = '$e';
     }
+    if (!mounted) return;
+    setState(() => _importing = false);
+
+    if (path == null) {
+      if (failure != null) {
+        _toast('Import failed. $failure', error: true);
+      }
+      return;
+    }
+    await _scanModels();
+    if (!mounted) return;
+    final variant = path.toLowerCase().contains('e4b')
+        ? GemmaVariant.e4b
+        : GemmaVariant.e2b;
+    await _loadModel(path, variant);
+  }
+
+  /// Android 11+ needs All-files access before Download/ can be scanned.
+  Future<void> _grantAllFiles() async {
+    final granted = await ensureAllFilesAccess();
+    if (!mounted) return;
+    if (granted) {
+      await _scanModels();
+      if (mounted) _toast('Access granted. Storage rescanned.');
+    } else {
+      _toast(
+        'Still denied. Android needs this toggled under '
+        'Settings → Apps → TrailGuard → All files access — or just use '
+        'Import model file instead.',
+        error: true,
+      );
+    }
+  }
+
+  void _toast(String message, {bool error = false}) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        backgroundColor: error ? AppTheme.error : AppTheme.primary,
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: error ? 8 : 3),
+        content: Text(message),
+      ));
   }
 
   Future<void> _startDownload() async {
@@ -167,20 +229,57 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               onLoad: _loadModel,
             ),
             const SizedBox(height: 12),
+
+            // The reliable route. Scanning Download/ needs All-files access on
+            // Android 11+; picking a file does not.
             SizedBox(
               width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _scanning ? null : _scanModels,
-                icon: _scanning
+              child: ElevatedButton.icon(
+                onPressed: _importing ? null : _importModel,
+                icon: _importing
                     ? const SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: AppTheme.primary),
+                            strokeWidth: 2, color: Colors.white),
                       )
-                    : const Icon(Icons.search_rounded),
-                label: Text(_scanning ? 'Scanning…' : 'Scan storage'),
+                    : const Icon(Icons.drive_folder_upload_rounded, size: 20),
+                label: Text(_importing ? 'Importing…' : 'Import model file'),
               ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Already copied a .litertlm into Downloads? Import it here — '
+              'Android 11+ blocks apps from reading that folder directly, '
+              'which is why a scan can come back empty.',
+              style: AppTheme.body().copyWith(fontSize: 12, height: 1.45),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _scanning ? null : _scanModels,
+                    icon: _scanning
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: AppTheme.primary),
+                          )
+                        : const Icon(Icons.search_rounded, size: 18),
+                    label: Text(_scanning ? 'Scanning…' : 'Scan'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _grantAllFiles,
+                    icon: const Icon(Icons.lock_open_rounded, size: 18),
+                    label: const Text('Allow files'),
+                  ),
+                ),
+              ],
             ),
           ],
 

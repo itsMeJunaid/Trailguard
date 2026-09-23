@@ -13,6 +13,41 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
+// Some plugins still pin Java 8 (tflite_flutter sets VERSION_1_8 and never sets
+// a Kotlin jvmTarget). Under AGP 8.13 the Kotlin plugin defaults to 17 and the
+// build dies with "Inconsistent JVM-target compatibility detected for tasks
+// compileReleaseJavaWithJavac (1.8) and compileReleaseKotlin (17)".
+//
+// The state.executed guard matters: evaluationDependsOn(":app") above has
+// already evaluated :app by the time this runs, and registering afterEvaluate
+// on an evaluated project throws. :app is already 17/17 anyway.
+subprojects {
+    if (!project.state.executed) {
+        afterEvaluate { proj ->
+            if (proj.hasProperty("android")) {
+                proj.android {
+                    // tflite_flutter still targets android-31, but its own
+                    // transitive androidx.window dependency demands 33+.
+                    if (proj.android.compileSdkVersion == null ||
+                            proj.android.compileSdkVersion < "android-34") {
+                        compileSdkVersion 36
+                    }
+                    compileOptions {
+                        sourceCompatibility = JavaVersion.VERSION_17
+                        targetCompatibility = JavaVersion.VERSION_17
+                    }
+                }
+                proj.tasks.configureEach { task ->
+                    if (task.name.endsWith("Kotlin") && task.hasProperty("compilerOptions")) {
+                        task.compilerOptions.jvmTarget.set(
+                            org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+                    }
+                }
+            }
+        }
+    }
+}
+
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }

@@ -4,8 +4,7 @@ import 'dart:isolate';
 import 'dart:ui';
 import 'package:dio/dio.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
-import 'package:path_provider/path_provider.dart';
-import '../core/constants.dart';
+import '../core/platform/local_files.dart';
 
 /// Downloads a model file using flutter_downloader so the OS can keep the
 /// transfer alive while the app is backgrounded. Progress is surfaced via
@@ -100,26 +99,13 @@ class ModelDownloadService {
     return 0;
   }
 
-  Future<String> _resolveTargetDir() async {
-    final publicDir = Directory(AppConstants.externalModelFolder);
-    try {
-      if (!await publicDir.exists()) {
-        await publicDir.create(recursive: true);
-      }
-      final probe = File('${publicDir.path}/.probe');
-      await probe.writeAsString('');
-      await probe.delete();
-      return publicDir.path;
-    } catch (_) {
-      final ext = await getExternalStorageDirectory();
-      final d = Directory(
-          '${ext?.path ?? (await getTemporaryDirectory()).path}/gemma_model');
-      if (!await d.exists()) {
-        await d.create(recursive: true);
-      }
-      return d.path;
-    }
-  }
+  /// App-private external storage. Writable on every Android version with no
+  /// permission at all, and it is one of the folders the model scanner checks.
+  ///
+  /// This used to try `/storage/emulated/0/Download/gemma_model` first, which
+  /// on Android 11+ throws unless the user has granted All-files access — and
+  /// a model saved there is then unreadable by the very app that saved it.
+  Future<String> _resolveTargetDir() async => (await modelDirectory()).path;
 
   Future<String?> startDownload({
     required String url,

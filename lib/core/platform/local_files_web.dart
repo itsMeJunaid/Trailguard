@@ -70,3 +70,8 @@ Future<String?> readDocText(String name) async {
 }
 
 Future<List<String>> scanForModelFiles() async => const [];
+
+
+/// No filesystem to import into, and no LiteRT-LM engine to feed.
+Future<bool> ensureAllFilesAccess() async => false;
+Future<String?> importModelFile() async => null;

@@ -136,8 +136,8 @@ TrailGuard requires a Gemma 4 model file to power the AI. You download it once a
 
 | Model | Size | Speed | Quality |
 |---|---|---|---|
-| **Gemma 4 E2B (Lite)** | ~1.5 GB | Faster | Good for most use cases |
-| **Gemma 4 E4B (Full)** | ~2.8 GB | Slower | Best quality responses |
+| **Gemma 4 E2B (Lite)** | ~2.4 GB | Faster | Good for most use cases |
+| **Gemma 4 E4B (Full)** | ~3.4 GB | Slower | Best quality responses |
 
 **How to download:**
 1. On the model selection screen, tap your chosen model
@@ -145,9 +145,15 @@ TrailGuard requires a Gemma 4 model file to power the AI. You download it once a
 3. Progress is shown with a percentage bar — download runs in the background
 4. When complete, the model loads automatically
 
-> **Tip:** Download over Wi-Fi. The model files are 1.5–2.8 GB.
+> **Tip:** Download over Wi-Fi. The model files are 2.4–3.4 GB.
 
-> **Already have the model file?** Place it in your device's `/Downloads` or `/Documents` folder — TrailGuard will scan and detect it automatically on the storage scan screen.
+> **Already have the model file?** Go to **Settings → Import model file** and pick
+> the `.litertlm`. This is the reliable route: on Android 11+ apps cannot read
+> `/Downloads` directly, so **Scan** will come back empty even though the file is
+> plainly there. The picker grants access to the one file you choose, so it needs
+> no storage permission at all.
+>
+> **Scan** still works if you grant **Allow files** (All-files access) first.
 
 ### 3. Start Using the App
 
@@ -423,7 +429,7 @@ available and the `_io` one everywhere else. No screen imports `dart:io`.
 ## 📋 Requirements
 
 - **Android 5.0+** (API level 21 or higher)
-- **1.5–2.8 GB free storage** for the AI model
+- **2.4–3.4 GB free storage** for the AI model
 - **RAM:** 4 GB minimum, 6 GB+ recommended for smooth inference
 - **Internet:** Only required once to download the Gemma 4 model
 - **GPS hardware** (present on all modern smartphones)

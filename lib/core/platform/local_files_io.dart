@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -139,4 +140,61 @@ Future<void> _scanDir(Directory dir, Set<String> acc, {int depth = 2}) async {
       }
     }
   } catch (_) {}
+}
+
+
+/// Where imported models live: app-private, so it is readable on every Android
+/// version without any storage permission at all.
+Future<Directory> modelDirectory() async {
+  final base = await getExternalStorageDirectory() ??
+      await getApplicationDocumentsDirectory();
+  final dir = Directory('${base.path}/gemma_model');
+  if (!await dir.exists()) await dir.create(recursive: true);
+  return dir;
+}
+
+/// Ask for "All files access" and report whether it was actually granted.
+///
+/// This is the only way an app can read `/storage/emulated/0/Download` on
+/// Android 11+. `requestLegacyExternalStorage` does nothing past targetSdk 29,
+/// and READ_MEDIA_* does not cover a `.litertlm` file because it is not media.
+Future<bool> ensureAllFilesAccess() async {
+  try {
+    if (await Permission.manageExternalStorage.isGranted) return true;
+    final status = await Permission.manageExternalStorage.request();
+    return status.isGranted;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Let the user hand us the model through the system file picker.
+///
+/// This path needs no storage permission — the picker grants access to the one
+/// file the user chose — so it works even when All files access is denied.
+/// Returns the new in-app path, or null if the user cancelled.
+Future<String?> importModelFile() async {
+  final result = await FilePicker.platform.pickFiles(
+    withData: false,
+    allowMultiple: false,
+  );
+  final sourcePath = result?.files.single.path;
+  if (sourcePath == null) return null;
+
+  final dir = await modelDirectory();
+  final target = File('${dir.path}/${result!.files.single.name}');
+  final source = File(sourcePath);
+
+  // The picker already staged a copy in our cache, so a rename is a cheap
+  // metadata move on the same volume. Only fall back to a real copy — which
+  // for a 2.6 GB model is slow and needs double the free space — if it is not.
+  try {
+    await source.rename(target.path);
+  } catch (_) {
+    await source.copy(target.path);
+    try {
+      await source.delete();
+    } catch (_) {}
+  }
+  return target.path;
 }
